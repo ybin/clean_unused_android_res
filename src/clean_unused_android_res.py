@@ -93,13 +93,14 @@ def remove_xml_nodes(xml, name_list):
     tree = ET.parse(xml)
     root = tree.getroot()
     for name in name_list:
-        x = './[@name="'+name+'"]'
+        x = ".//*[@name='"+name+"']"
         node = root.find(x)
-        if node:
+        if node == None:
+            print('remove node failed: ', name)
+        else:
             root.remove(node)
             print('remove node: ', name)
-        else:
-            print('remove node failed: ', name)
+    tree.write(xml)
 
 def parse(content):
     """
@@ -173,7 +174,7 @@ def main():
     for k in parsed_dict.keys():
         if k == removable_file_type:
             print('>>>>>> remove unused files...')
-            remove_files(parsed_dict[k])
+            #remove_files(parsed_dict[k])
         elif k == xml_type:
             xml_info_dict = parsed_dict[k]
             for file_name in xml_info_dict.keys():
