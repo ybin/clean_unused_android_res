@@ -49,7 +49,9 @@ def get_node_name(line) -> str:
 
 def get_file_type(_path) -> str:
     _type = ''
-    if drawable_xml_p.match(_path) or menu_xml_p.match(_path) or raw_file_p.match(_path) or anim_xml_p.match(_path) or layout_xml_p.match(_path) or _path.endswith('.png'):
+    if drawable_xml_p.match(_path) or menu_xml_p.match(_path) or \
+            raw_file_p.match(_path) or anim_xml_p.match(_path) or \
+            layout_xml_p.match(_path) or _path.endswith('.png'):
         _type = removable_file_type
     elif _path.endswith('.xml'):
         _type = xml_type
@@ -200,7 +202,7 @@ def main():
     for k in parsed_dict.keys():
         if k == removable_file_type:
             print('\n>>>>>> remove unused files...')
-            #remove_files(parsed_dict[k])
+            remove_files(parsed_dict[k])
         elif k == xml_type:
             xml_info_dict = parsed_dict[k]
             for file_name in xml_info_dict.keys():
