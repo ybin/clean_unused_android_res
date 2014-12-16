@@ -5,14 +5,16 @@ import re
 import xml.etree.ElementTree as ET
 
 xml_type = 'xml'
-layout_type = 'layout'
 removable_file_type = "removable"
+supported_xml_node_type = ('color', 'dimen', 'string', 'array', 'string-array')
 
-name_attr_p = re.compile(r'.*R\.\S+\.(\S+).*')
+node_name_p = re.compile(r'.*R\.\S+\.(\S+).*')
+node_type_p = re.compile(r'.*R\.(\S+)\.\S+.*')
 drawable_xml_p = re.compile(r'.*res\\drawable\\\S+\.xml.*')
 anim_xml_p = re.compile(r'.*res\\anim\\\S+\.xml')
-layout_p = re.compile(r'.*res\\layout\\\S+\.xml.*')
-raw_p = re.compile(r'.*res\\raw\\.*')
+layout_xml_p = re.compile(r'.*res\\layout\\\S+\.xml.*')
+menu_xml_p = re.compile(r'.*res\\menu\\\S+\.xml.*')
+raw_file_p = re.compile(r'.*res\\raw\\.*')
 
 def is_valid_line(line):
     return line.endswith('[UnusedResources]\n')
@@ -32,28 +34,28 @@ def get_line_num(line) -> str:
             line_num = ''
     return line_num
 
-def get_file_type(_path) -> str:
-    _type = ''
-    if drawable_xml_p.match(_path) or raw_p.match(_path) or anim_xml_p.match(_path) or _path.endswith('.png'):
-        _type = removable_file_type
-    elif _path.endswith('.xml') and not layout_p.match(_path):
-        _type = xml_type
-    elif layout_p.match(_path):
-        _type = layout_type
-    return _type
+def get_node_type(line) -> str:
+    ret = ''
+    m = node_type_p.match(line)
+    if m:
+        ret = m.group(1)
+    return ret
 
 def get_node_name(line) -> str:
-    """
-    get 'name' attribute of xml node.
-
-    :param line: line of lint log
-    :return: value of 'name' attribute
-    """
     ret = ''
-    m = name_attr_p.match(line)
+    m = node_name_p.match(line)
     if m:
         ret = m.group(1)
     return str(ret)
+
+def get_file_type(_path) -> str:
+    _type = ''
+    if drawable_xml_p.match(_path) or menu_xml_p.match(_path) or raw_file_p.match(_path) or anim_xml_p.match(_path) or layout_xml_p.match(_path) or _path.endswith('.png'):
+        _type = removable_file_type
+    elif _path.endswith('.xml'):
+        _type = xml_type
+    return _type
+
 
 
 def get_lint_log(test) -> list:
@@ -79,28 +81,25 @@ def remove_files(file_list):
             os.remove(f)
             print("delete img file: ", f)
 
-def remove_xml_nodes(xml, name_list):
-    """
-    remove xml nodes.
-
-    :param xml: xml file name
-    :param name_list: 'name' list of nodes in 'xml'
-    :return: None
-    """
+def remove_xml_nodes(xml, l):
     if not os.path.exists(xml):
         return
 
-    tree = ET.parse(xml)
-    root = tree.getroot()
-    for name in name_list:
-        x = ".//*[@name='"+name+"']"
-        node = root.find(x)
-        if node == None:
-            print('remove node failed: ', name)
-        else:
-            root.remove(node)
-            print('remove node: ', name)
-    tree.write(xml)
+    f = open(xml, 'r', encoding='utf-8')
+    cstr = f.read()
+    f.close()
+    for name in l:
+        tmp_index = cstr.find('name="'+name+'"')
+        if tmp_index == -1:
+            continue
+        start_index = cstr.rfind('<', tmp_index-20, tmp_index)+1
+        tag = cstr[start_index:cstr.find(' ', start_index)]
+        end_index = cstr.index('</'+tag+'>', start_index) + len('</'+tag+'>') + 1
+        cstr = str(cstr[:start_index-1] + cstr[end_index:])
+        print('remove xml node: ', name, ' in ', xml)
+    f = open(xml, 'w', encoding='utf-8')
+    f.write(cstr)
+    f.close()
 
 def parse(content):
     """
@@ -138,11 +137,13 @@ def parse(content):
         if file_type == removable_file_type:
             parsed_dict[file_type].append(file_name)
         elif file_type == xml_type:
+            if not get_node_type(line) in supported_xml_node_type:
+                print('unsuported xml node type: ', file_name)
+                continue
             xml_dict = parsed_dict[xml_type]
-            if file_name in xml_dict:
-                xml_dict[file_name].append(get_node_name(line))
-            else:
-                xml_dict[file_name] = [get_node_name(line)]
+            if not file_name in xml_dict:
+                xml_dict[file_name] = []
+            xml_dict[file_name].append(get_node_name(line))
         else:
             print('unknown file type: ', file_type, ' file name: ', file_name)
 
@@ -151,13 +152,13 @@ def parse(content):
 def dump_dict(d):
     for k in d.keys():
         if k == removable_file_type:
-            print('>>>>>> remove unused files...')
+            print('\n>>>>>> remove unused files...')
             print('\n'.join(d[k]))
             print()
         elif k == xml_type:
             xml_info_dict = d[k]
             for file_name in xml_info_dict.keys():
-                print('>>>>>> remove unused xml nodes in ', file_name)
+                print('\n>>>>>> remove unused xml nodes in ', file_name)
                 print('\n'.join(xml_info_dict[file_name]))
                 print()
 
@@ -165,7 +166,7 @@ def main():
     print(">>>>>> start processing ...")
 
     print('>>>>>> get lint log...')
-    parsed_dict = parse(get_lint_log(True))
+    parsed_dict = parse(get_lint_log(False))
 
     if False:
         dump_dict(parsed_dict)
@@ -173,12 +174,12 @@ def main():
 
     for k in parsed_dict.keys():
         if k == removable_file_type:
-            print('>>>>>> remove unused files...')
-            #remove_files(parsed_dict[k])
+            print('\n>>>>>> remove unused files...')
+            remove_files(parsed_dict[k])
         elif k == xml_type:
             xml_info_dict = parsed_dict[k]
             for file_name in xml_info_dict.keys():
-                print('>>>>>> remove unused xml nodes in ', file_name)
+                print('\n>>>>>> remove unused xml nodes in ', file_name)
                 remove_xml_nodes(file_name, xml_info_dict[file_name])
 
 if __name__ == '__main__':
