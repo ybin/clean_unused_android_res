@@ -1,8 +1,7 @@
-__author__ = 'sunyanbin10130990'
+__author__ = 'sunyanbin'
 
 import os
 import re
-import xml.etree.ElementTree as ET
 
 xml_type = 'xml'
 removable_file_type = "removable"
@@ -69,12 +68,6 @@ def get_lint_log(test) -> list:
     return os.popen("lint --check UnusedResources .").readlines()
 
 def remove_files(file_list):
-    """
-    remove files.
-
-    :param file_list: a list of files
-    :return: None
-    """
     assert isinstance(file_list, list)
     for f in file_list:
         if os.path.exists(f):
@@ -97,6 +90,38 @@ def remove_xml_nodes(xml, l):
         end_index = cstr.index('</'+tag+'>', start_index) + len('</'+tag+'>') + 1
         cstr = str(cstr[:start_index-1] + cstr[end_index:])
         print('remove xml node: ', name, ' in ', xml)
+    f = open(xml, 'w', encoding='utf-8')
+    f.write(cstr)
+    f.close()
+    
+def get_node(name, cstr) -> str:
+    tag_pstr = r'.*<\s*([a-z\-A-Z]+)\s+name="' + name + r'".*'
+    tag_p = re.compile(tag_pstr, re.S)
+    tag_m = tag_p.match(cstr)
+    if tag_m:
+        tag = tag_m.group(1)
+        start_tag = r'.*\n(\s*<\s*' + tag + r'\s+name\s*=\s*"' + name + r'"[^>]*>'
+        end_tag = r'</\s*' + tag + r'\s*>[ \t]*\n*).*'
+        node_pstr = start_tag + r'.*?' + end_tag
+        node_p = re.compile(node_pstr, re.S)
+        node_m = node_p.match(cstr)
+        if node_m:
+            return node_m.group(1)
+    return None
+    
+def remove_xml_nodes_p(xml, l):
+    if not os.path.exists(xml):
+        return
+
+    f = open(xml, 'r', encoding='utf-8')
+    cstr = f.read()
+    f.close()
+    for name in l:
+        node = get_node(name, cstr)
+        if node:
+            node_index = cstr.find(node)
+            cstr = str(cstr[:node_index] + cstr[node_index+len(node):])
+            #print('remove xml node: ', node)
     f = open(xml, 'w', encoding='utf-8')
     f.write(cstr)
     f.close()
@@ -166,7 +191,7 @@ def main():
     print(">>>>>> start processing ...")
 
     print('>>>>>> get lint log...')
-    parsed_dict = parse(get_lint_log(False))
+    parsed_dict = parse(get_lint_log(True))
 
     if False:
         dump_dict(parsed_dict)
@@ -175,12 +200,12 @@ def main():
     for k in parsed_dict.keys():
         if k == removable_file_type:
             print('\n>>>>>> remove unused files...')
-            remove_files(parsed_dict[k])
+            #remove_files(parsed_dict[k])
         elif k == xml_type:
             xml_info_dict = parsed_dict[k]
             for file_name in xml_info_dict.keys():
                 print('\n>>>>>> remove unused xml nodes in ', file_name)
-                remove_xml_nodes(file_name, xml_info_dict[file_name])
+                remove_xml_nodes_p(file_name, xml_info_dict[file_name])
 
 if __name__ == '__main__':
     main()
