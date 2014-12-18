@@ -1,7 +1,10 @@
 __author__ = 'sunyanbin'
 
 import os
+import sys
 import re
+import getopt
+import xml.etree.ElementTree as ET
 
 
 xml_type = 'xml'
@@ -52,10 +55,9 @@ def get_file_type(_path) -> str:
     return _type
 
 
-def get_lint_log(test) -> list:
-    assert isinstance(test, bool)
-    if test:
-        f = open("lint.log")
+def get_lint_log(log) -> list:
+    if log:
+        f = open(log)
         l = f.readlines()
         f.close()
         return l
@@ -69,40 +71,27 @@ def remove_files(file_list):
             os.remove(f)
 
 
-def get_node(name, cstr) -> str:
-    tag_pstr = r'.*<\s*([a-z\-A-Z]+)\s+name="' + name + r'".*'
-    tag_p = re.compile(tag_pstr, re.S)
-    tag_m = tag_p.match(cstr)
-    if tag_m:
-        tag = tag_m.group(1)
-        start_tag = r'.*\n(\s*<\s*' + tag + r'\s+name\s*=\s*"' + name + r'"[^>]*>'
-        end_tag = r'</\s*' + tag + r'\s*>[ \t]*\n*).*'
-        node_pstr = start_tag + r'.*?' + end_tag
-        node_p = re.compile(node_pstr, re.S)
-        node_m = node_p.match(cstr)
-        if node_m:
-            return node_m.group(1)
-    return None
+def remove_xml_nodes(xml, l):
+    """
+    remove node in 'l' AND all comments,
+    this is a bug of ElementTree of Python.
+    """
+    if not os.path.exists(xml):
+        return
+    tree = ET.parse(xml)
+    root = tree.getroot()
+    for name in l:
+        # get parent node
+        p_node = root.find('.//*[@name="' + name + '"]/..')
+        if p_node:
+            # get the node to be removed
+            node = p_node.find('./*[@name="' + name + '"]')
+            p_node.remove(node)
+            # print('remove xml node: ', node.text)
+    tree.write(xml, encoding='UTF-8', xml_declaration=True)
 
 
 def remove_xml_nodes_p(xml, l):
-    if not os.path.exists(xml):
-        return
-    f = open(xml, 'r', encoding='utf-8')
-    cstr = f.read()
-    f.close()
-    for name in l:
-        node = get_node(name, cstr)
-        if node:
-            node_index = cstr.find(node)
-            cstr = str(cstr[:node_index] + cstr[node_index+len(node):])
-            # print('remove xml node_p: ', node)
-    f = open(xml, 'w', encoding='utf-8')
-    f.write(cstr)
-    f.close()
-
-
-def remove_xml_nodes_pp(xml, l):
     if not os.path.exists(xml):
         return
     f = open(xml, 'r', encoding='utf-8')
@@ -181,20 +170,61 @@ def parse(content):
     return parsed_dict
 
 
-def process():
+def usage():
+    print('\n' + sys.argv[0] + """
+
+    Clean unused resources in Android App project.
+
+    Usage:
+        """ + sys.argv[0] + ' [options]' + """
+
+    options:
+        -h, --help: print help info.
+        -v, --verbose: print verbose information when processing.
+        -f <lint log file>
+        --file <lint log file>
+            use <lint log file>, otherwise call lint when processing.
+    """)
+
+
+def process(argv):
+    verbose = False
+    lint_log = None
+
+    try:
+        opts, args = getopt.getopt(argv, 'hf:v', ['help', 'file=', 'verbose'])
+    except getopt.GetoptError:
+        usage()
+        sys.exit(1)
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            usage()
+            sys.exit()
+        elif opt in ('-v', '--verbose'):
+            verbose = True
+        elif opt in ('-f', '--file'):
+            lint_log = arg
+        else:
+            print('unknown options!')
+            usage()
+
     print(">>>>>> start processing ...")
-    print('>>>>>> get lint log...')
-    parsed_dict = parse(get_lint_log(False))
+    print('>>>>>> get lint log, may need minutes...')
+    parsed_dict = parse(get_lint_log(lint_log))
 
     for k in parsed_dict.keys():
         if k == removable_file_type:
             print('\n>>>>>> remove unused files...')
             remove_files(parsed_dict[k])
+            if verbose:
+                print('\n'.join(parsed_dict[k]))
         elif k == xml_type:
             xml_info_dict = parsed_dict[k]
             for file_name in xml_info_dict.keys():
                 print('\n>>>>>> remove unused xml nodes in ', file_name)
-                remove_xml_nodes_pp(file_name, xml_info_dict[file_name])
+                remove_xml_nodes_p(file_name, xml_info_dict[file_name])
+                if verbose:
+                    print('\n'.join(xml_info_dict[file_name]))
 
 if __name__ == '__main__':
-    process()
+    process(sys.argv[1:])
