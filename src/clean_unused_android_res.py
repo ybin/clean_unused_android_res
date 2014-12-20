@@ -4,6 +4,7 @@ import os
 import sys
 import re
 import getopt
+import subprocess
 import xml.etree.ElementTree as ET
 
 
@@ -61,7 +62,7 @@ def get_lint_log(log) -> list:
         l = f.readlines()
         f.close()
         return l
-    return os.popen("lint --check UnusedResources .").readlines()
+    return os.popen("lint.bat --check UnusedResources .").readlines()
 
 
 def remove_files(file_list):
@@ -191,26 +192,32 @@ def process(argv):
     verbose = False
     lint_log = None
 
-    try:
-        opts, args = getopt.getopt(argv, 'hf:v', ['help', 'file=', 'verbose'])
-    except getopt.GetoptError:
-        usage()
-        sys.exit(1)
-    for opt, arg in opts:
-        if opt in ('-h', '--help'):
+    if argv:
+        try:
+            opts, args = getopt.getopt(argv, 'hf:v', ['help', 'file=', 'verbose'])
+        except getopt.GetoptError:
             usage()
-            sys.exit()
-        elif opt in ('-v', '--verbose'):
-            verbose = True
-        elif opt in ('-f', '--file'):
-            lint_log = arg
-        else:
-            print('unknown options!')
-            usage()
+            sys.exit(1)
+        for opt, arg in opts:
+            if opt in ('-h', '--help'):
+                usage()
+                sys.exit()
+            elif opt in ('-v', '--verbose'):
+                verbose = True
+            elif opt in ('-f', '--file'):
+                lint_log = arg
+            else:
+                print('unknown options!')
+                usage()
 
     print(">>>>>> start processing ...")
     print('>>>>>> get lint log, may need minutes...')
-    parsed_dict = parse(get_lint_log(lint_log))
+    content = get_lint_log(lint_log)
+    if not content:
+        print("""fatal error: cannot run lint on this project!
+make sure 'lint' command is on your PATH dirs.""")
+        return
+    parsed_dict = parse(content)
 
     for k in parsed_dict.keys():
         if k == removable_file_type:
@@ -227,4 +234,7 @@ def process(argv):
                     print('\n'.join(xml_info_dict[file_name]))
 
 if __name__ == '__main__':
-    process(sys.argv[1:])
+    if len(sys.argv) > 1:
+        process(sys.argv[1:])
+    else:
+        process(None)
